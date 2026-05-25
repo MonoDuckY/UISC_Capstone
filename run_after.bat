@@ -10,7 +10,7 @@ echo ==========================
 :: ==========================
 if not exist venv (
     echo [ERROR] venv not found!
-    echo Please run setup first (install bat).
+    echo Please run run_first.bat first.
     pause
     exit /b
 )
@@ -33,4 +33,4 @@ python inference_realesrgan.py -n RealESRGAN_x4plus -i inputs -o results --fp32
 echo ==========================
 echo DONE - check /results folder
 echo ==========================
-pause
+:: pause

@@ -67,7 +67,7 @@ pip uninstall -y numpy
 pip install numpy==1.26.4
 
 :: force reinstall torchvision compatibility fix
-pip install torchvision==0.16.2+cpu --force-reinstall
+pip install torchvision==0.16.2+cpu --force-reinstall --index-url https://download.pytorch.org/whl/cpu
 
 :: ==========================
 :: MODEL DOWNLOAD + RUN
@@ -83,4 +83,4 @@ python inference_realesrgan.py -n RealESRGAN_x4plus -i inputs -o results --fp32
 echo ==========================
 echo DONE
 echo ==========================
-pause
+:: pause
