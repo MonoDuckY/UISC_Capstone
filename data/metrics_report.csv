@@ -1,0 +1,4 @@
+Raw Image,Processed Image,MSE,PSNR,SSIM
+test_0001.png,test_0001_processed.png,0.0,inf,1.0
+
+AVERAGE,,0.0,inf,1.0
