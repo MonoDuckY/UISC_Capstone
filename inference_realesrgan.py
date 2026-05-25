@@ -13,7 +13,7 @@ def main():
     """Inference demo for Real-ESRGAN.
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input', type=str, default='inputs', help='Input image or folder')
+    parser.add_argument('-i', '--input', type=str, default=os.path.join('data', 'raw data'), help='Input image or folder')
     parser.add_argument(
         '-n',
         '--model_name',
@@ -21,7 +21,7 @@ def main():
         default='RealESRGAN_x4plus',
         help=('Model names: RealESRGAN_x4plus | RealESRNet_x4plus | RealESRGAN_x4plus_anime_6B | RealESRGAN_x2plus | '
               'realesr-animevideov3 | realesr-general-x4v3'))
-    parser.add_argument('-o', '--output', type=str, default='results', help='Output folder')
+    parser.add_argument('-o', '--output', type=str, default=os.path.join('data', 'processed data'), help='Output folder')
     parser.add_argument(
         '-dn',
         '--denoise_strength',
@@ -32,7 +32,7 @@ def main():
     parser.add_argument('-s', '--outscale', type=float, default=4, help='The final upsampling scale of the image')
     parser.add_argument(
         '--model_path', type=str, default=None, help='[Option] Model path. Usually, you do not need to specify it')
-    parser.add_argument('--suffix', type=str, default='out', help='Suffix of the restored image')
+    parser.add_argument('--suffix', type=str, default='processed', help='Suffix of the restored image')
     parser.add_argument('-t', '--tile', type=int, default=0, help='Tile size, 0 for no tile during testing')
     parser.add_argument('--tile_pad', type=int, default=10, help='Tile padding')
     parser.add_argument('--pre_pad', type=int, default=0, help='Pre padding size at each border')

@@ -54,3 +54,6 @@ frontend/.DS_Store
 
 #python
 venv
+data
+inputs
+results

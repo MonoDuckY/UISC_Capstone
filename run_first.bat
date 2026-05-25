@@ -56,18 +56,18 @@ pip install gfpgan==1.3.8
 pip install realesrgan==0.3.0
 
 :: utilities
-pip install opencv-python tqdm pyyaml scipy
+pip install opencv-python==4.8.1.78 tqdm pyyaml scipy
 
 :: ==========================
 :: 5. FINAL PATCH FIX
 :: ==========================
 echo [5/5] Fixing known compatibility issues...
 
-pip uninstall -y numpy
-pip install numpy==1.26.4
-
 :: force reinstall torchvision compatibility fix
 pip install torchvision==0.16.2+cpu --force-reinstall --index-url https://download.pytorch.org/whl/cpu
+
+pip uninstall -y numpy
+pip install numpy==1.26.4
 
 :: ==========================
 :: MODEL DOWNLOAD + RUN
@@ -78,7 +78,7 @@ if not exist weights mkdir weights
 powershell -Command "Invoke-WebRequest https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth -OutFile weights\RealESRGAN_x4plus.pth"
 
 echo Running Real-ESRGAN...
-python inference_realesrgan.py -n RealESRGAN_x4plus -i inputs -o results --fp32
+venv\Scripts\python.exe inference_realesrgan.py -n RealESRGAN_x4plus -i "data\raw data\test_0001.png" -o "data\processed data" --suffix processed --fp32
 
 echo ==========================
 echo DONE

@@ -23,14 +23,21 @@ call venv\Scripts\activate.bat
 :: ==========================
 :: 3. RUN INFERENCE
 :: ==========================
-echo Running Real-ESRGAN...
+set INPUT_PATH="data\raw data"
+if "%~1"=="test" (
+    set INPUT_PATH="data\raw data\test_0001.png"
+) else if not "%~1"=="" (
+    set INPUT_PATH=%1
+)
 
-python inference_realesrgan.py -n RealESRGAN_x4plus -i inputs -o results --fp32
+echo Running Real-ESRGAN on %INPUT_PATH%...
+
+venv\Scripts\python.exe inference_realesrgan.py -n RealESRGAN_x4plus -i %INPUT_PATH% -o "data\processed data" --suffix processed --fp32
 
 :: ==========================
 :: 4. DONE
 :: ==========================
 echo ==========================
-echo DONE - check /results folder
+echo DONE - check data\processed data folder
 echo ==========================
 :: pause

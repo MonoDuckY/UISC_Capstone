@@ -2,7 +2,7 @@
 
 # &#x20;Shorter version for lazy 
 
-Clone/Download zip->run run\_first.bat and wait for 15min(result in result ofc) -> want more test?(Change inputs in inputs ofc) run run\_after.bat
+Clone/Download zip->run run\_first.bat and wait for 15min(result in data/processed data ofc) -> want more test?(Change inputs in data/raw data ofc) run run\_after.bat
 
 **NOTE**: Don't worry if you see many red line, it's not a bug, it's a feature; When occur an error, don't ask me, I don't know either :v 
 
@@ -57,8 +57,9 @@ Real-ESRGAN/
 ├── inference\\\_realesrgan.py   # main inference script
 ├── run\\\_demo.bat              # run-only script
 ├── setup.bat                 # full installer (if included)
-├── inputs/                   # put images here
-├── results/                  # output images
+├── data/
+│   ├── raw data/              # put images here
+│   └── processed data/        # output images
 └── weights/
     └── RealESRGAN\\\_x4plus.pth
 ```
@@ -93,7 +94,7 @@ run\_after.bat
 Or manually:
 
 ```bash
-python inference\\\_realesrgan.py -n RealESRGAN\\\_x4plus -i inputs -o results --fp32
+python inference\\\_realesrgan.py -n RealESRGAN\\\_x4plus -i "data/raw data" -o "data/processed data" --suffix processed --fp32
 ```
 
 \---
@@ -103,7 +104,7 @@ python inference\\\_realesrgan.py -n RealESRGAN\\\_x4plus -i inputs -o results -
 1. Put images inside:
 
 ```
-inputs/
+data/raw data/
 ```
 
 2. Run:
@@ -115,7 +116,7 @@ run\_first.bat
 3. Check output in:
 
 ```
-results/
+data/processed data/
 ```
 
 \---
@@ -163,7 +164,7 @@ This setup solves:
 # &#x20;Example Command
 
 ```bash
-python inference\\\_realesrgan.py -n RealESRGAN\\\_x4plus -i inputs -o results --fp32
+python inference\\\_realesrgan.py -n RealESRGAN\\\_x4plus -i "data/raw data" -o "data/processed data" --suffix processed --fp32
 ```
 
 \---
