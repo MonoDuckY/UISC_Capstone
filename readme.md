@@ -4,7 +4,7 @@
 
 Clone/Download zip->run run\_first.bat and wait for 15min(result in result ofc) -> want more test?(Change inputs in inputs ofc) run run\_after.bat
 
-**NOTE**: Don't worry if you see many red line, it not a bug, it a feature; When occur an error, don't ask me, I don't know either :v 
+**NOTE**: Don't worry if you see many red line, it's not a bug, it's a feature; When occur an error, don't ask me, I don't know either :v 
 
 
 
