@@ -1,0 +1,59 @@
+HELP.md
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Ignore Spring Boot application properties
+src/main/resources/application.properties
+
+### STS ###
+
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+/hbf-web/.gradle
+
+# Ignore the specific build output, IDE, and Gradle directories inside hbf-web
+/hbf-web/build/
+/hbf-web/.idea/
+/hbf-web/.gradle/
+
+# --- Frontend (React) ---
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.DS_Store
+
+#python
+venv
+data
+inputs
+results

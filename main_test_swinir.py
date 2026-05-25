@@ -13,9 +13,9 @@ from utils import util_calculate_psnr_ssim as util
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--task', type=str, default='color_dn', help='classical_sr, lightweight_sr, real_sr, '
+    parser.add_argument('--task', type=str, default='real_sr', help='classical_sr, lightweight_sr, real_sr, '
                                                                      'gray_dn, color_dn, jpeg_car, color_jpeg_car')
-    parser.add_argument('--scale', type=int, default=1, help='scale factor: 1, 2, 3, 4, 8') # 1 for dn and jpeg car
+    parser.add_argument('--scale', type=int, default=4, help='scale factor: 1, 2, 3, 4, 8') # 1 for dn and jpeg car
     parser.add_argument('--noise', type=int, default=15, help='noise level: 15, 25, 50')
     parser.add_argument('--jpeg', type=int, default=40, help='scale factor: 10, 20, 30, 40')
     parser.add_argument('--training_patch_size', type=int, default=128, help='patch size used in training SwinIR. '
@@ -23,11 +23,14 @@ def main():
                                        'Images are NOT tested patch by patch.')
     parser.add_argument('--large_model', action='store_true', help='use large model, only provided for real image sr')
     parser.add_argument('--model_path', type=str,
-                        default='model_zoo/swinir/001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth')
-    parser.add_argument('--folder_lq', type=str, default=None, help='input low-quality test image folder')
+                        default='model_zoo/003_realSR_BSRGAN_DFO_s64w8_SwinIR-M_x4_GAN.pth')
+    parser.add_argument('--folder_lq', type=str, default='data/raw data', help='input low-quality test image folder')
     parser.add_argument('--folder_gt', type=str, default=None, help='input ground-truth test image folder')
     parser.add_argument('--tile', type=int, default=None, help='Tile size, None for no tile during testing (testing as a whole)')
     parser.add_argument('--tile_overlap', type=int, default=32, help='Overlapping of different tiles')
+    parser.add_argument('--folder_output', type=str, default='data/processed data', help='output folder path')
+    parser.add_argument('--image_filter', type=str, default='test_0001.png', help='pattern to filter input images (e.g. test_0001.png)')
+    parser.add_argument('--output_suffix', type=str, default='_processed', help='suffix for the output image name')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -64,10 +67,10 @@ def main():
 
     print("DEBUG FINAL folder:", folder)
     
-    files = glob.glob(os.path.join(folder, '*'))
+    files = glob.glob(os.path.join(folder, args.image_filter))
     print("DEBUG files:", files)
 
-    for idx, path in enumerate(sorted(glob.glob(os.path.join(folder, '*')))):
+    for idx, path in enumerate(sorted(glob.glob(os.path.join(folder, args.image_filter)))):
         # read image
         imgname, img_lq, img_gt = get_image_pair(args, path)  # image to HWC-BGR, float32
         img_lq = np.transpose(img_lq if img_lq.shape[2] == 1 else img_lq[:, :, [2, 1, 0]], (2, 0, 1))  # HCW-BGR to CHW-RGB
@@ -89,7 +92,7 @@ def main():
         if output.ndim == 3:
             output = np.transpose(output[[2, 1, 0], :, :], (1, 2, 0))  # CHW-RGB to HCW-BGR
         output = (output * 255.0).round().astype(np.uint8)  # float32 to uint8
-        cv2.imwrite(f'{save_dir}/{imgname}_SwinIR.png', output)
+        cv2.imwrite(f'{save_dir}/{imgname}{args.output_suffix}.png', output)
 
         # evaluate psnr/ssim/psnr_b
         if img_gt is not None:
@@ -233,6 +236,9 @@ def setup(args):
         folder = args.folder_gt
         border = 0
         window_size = 7
+
+    if args.folder_output is not None:
+        save_dir = args.folder_output
 
     return folder, save_dir, border, window_size
 
