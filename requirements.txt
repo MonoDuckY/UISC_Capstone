@@ -2,3 +2,6 @@ opencv-python
 tqdm
 pyyaml
 scipy
+numpy
+sewar
+pillow
