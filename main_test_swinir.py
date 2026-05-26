@@ -24,8 +24,8 @@ def main():
     parser.add_argument('--large_model', action='store_true', help='use large model, only provided for real image sr')
     parser.add_argument('--model_path', type=str,
                         default='model_zoo/swinir/001_classicalSR_DIV2K_s48w8_SwinIR-M_x2.pth')
-    parser.add_argument('--folder_lq', type=str, default=None, help='input low-quality test image folder')
-    parser.add_argument('--folder_gt', type=str, default=None, help='input ground-truth test image folder')
+    parser.add_argument('--folder_lq', type=str, default=os.path.join('data', 'raw data'), help='input low-quality test image folder')
+    parser.add_argument('--folder_gt', type=str, default=os.path.join('data', 'raw data'), help='input ground-truth test image folder')
     parser.add_argument('--tile', type=int, default=None, help='Tile size, None for no tile during testing (testing as a whole)')
     parser.add_argument('--tile_overlap', type=int, default=32, help='Overlapping of different tiles')
     args = parser.parse_args()
@@ -68,8 +68,19 @@ def main():
     print("DEBUG files:", files)
 
     for idx, path in enumerate(sorted(glob.glob(os.path.join(folder, '*')))):
+        # Skip directories and non-image files
+        if os.path.isdir(path):
+            continue
+        (imgname, imgext) = os.path.splitext(os.path.basename(path))
+        if imgext.lower() not in ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif']:
+            continue
+
         # read image
         imgname, img_lq, img_gt = get_image_pair(args, path)  # image to HWC-BGR, float32
+        if img_lq is None:
+            print(f"Warning: Failed to load image {path}. Skipping.")
+            continue
+
         img_lq = np.transpose(img_lq if img_lq.shape[2] == 1 else img_lq[:, :, [2, 1, 0]], (2, 0, 1))  # HCW-BGR to CHW-RGB
         img_lq = torch.from_numpy(img_lq).float().unsqueeze(0).to(device)  # CHW-RGB to NCHW-RGB
 
@@ -89,7 +100,11 @@ def main():
         if output.ndim == 3:
             output = np.transpose(output[[2, 1, 0], :, :], (1, 2, 0))  # CHW-RGB to HCW-BGR
         output = (output * 255.0).round().astype(np.uint8)  # float32 to uint8
-        cv2.imwrite(f'{save_dir}/{imgname}_SwinIR.png', output)
+        
+        # Save output using the original image's file extension, defaulting to .png
+        if imgext.lower() not in ['.png', '.jpg', '.jpeg']:
+            imgext = '.png'
+        cv2.imwrite(f'{save_dir}/{imgname}_processed{imgext}', output)
 
         # evaluate psnr/ssim/psnr_b
         if img_gt is not None:
@@ -203,18 +218,16 @@ def define_model(args):
 
 
 def setup(args):
+    save_dir = os.path.join('data', 'processed data')
+
     # 001 classical image sr/ 002 lightweight image sr
     if args.task in ['classical_sr', 'lightweight_sr']:
-        save_dir = f'results/swinir_{args.task}_x{args.scale}'
         folder = args.folder_lq
         border = args.scale
         window_size = 8
 
     # 003 real-world image sr
     elif args.task in ['real_sr']:
-        save_dir = f'results/swinir_{args.task}_x{args.scale}'
-        if args.large_model:
-            save_dir += '_large'
         folder = args.folder_lq
         print("DEBUG folder:", args.folder_lq)
         border = 0
@@ -222,14 +235,12 @@ def setup(args):
 
     # 004 grayscale image denoising/ 005 color image denoising
     elif args.task in ['gray_dn', 'color_dn']:
-        save_dir = f'results/swinir_{args.task}_noise{args.noise}'
         folder = args.folder_gt
         border = 0
         window_size = 8
 
     # 006 JPEG compression artifact reduction
     elif args.task in ['jpeg_car', 'color_jpeg_car']:
-        save_dir = f'results/swinir_{args.task}_jpeg{args.jpeg}'
         folder = args.folder_gt
         border = 0
         window_size = 7
