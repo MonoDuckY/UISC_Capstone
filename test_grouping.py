@@ -1,8 +1,8 @@
-import os
 import cv2
 import numpy as np
+import os
 
-def process_image(input_path, output_path):
+def process_image_by_border(input_path, output_path):
     img = cv2.imread(input_path)
     if img is None:
         print(f"Error reading image: {input_path}")
@@ -23,12 +23,11 @@ def process_image(input_path, output_path):
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
         
-        # Limit search region to center (15% to 85% width/height)
-        # to avoid patient metadata, text, and calibration scales on borders
-        if x < w_img * 0.15 or x > w_img * 0.85: continue
-        if y < h_img * 0.15 or y > h_img * 0.85: continue
+        # Avoid the borders where text/metadata lies
+        if x < w_img * 0.10 or x > w_img * 0.90: continue
+        if y < h_img * 0.10 or y > h_img * 0.90: continue
         
-        # Caliper arms are small (usually area between 3 and 150 pixels)
+        # Caliper arms are small
         area = cv2.contourArea(c)
         if area < 3 or area > 150: continue
         
@@ -36,22 +35,23 @@ def process_image(input_path, output_path):
         mask = np.zeros_like(gray)
         cv2.drawContours(mask, [c], -1, 255, cv2.FILLED)
         
-        # Dilate mask to check the immediate surrounding pixels
+        # Dilate mask to get the border
         kernel = np.ones((3, 3), np.uint8)
         dilated = cv2.dilate(mask, kernel, iterations=2)
         border_mask = cv2.subtract(dilated, mask)
         
-        # Calculate mean intensity of the border
+        # Mean intensity of the border
         mean_val = cv2.mean(gray, mask=border_mask)[0]
         
-        # Calipers have a distinct black outline, so their border mean is very low (< 65)
-        # Tissue borders are surrounded by other bright/grey pixels and will be rejected.
+        # Caliper markers have a very distinct dark/black outline/border
         if mean_val < 65:
-            candidate_contours.append(c)
+            candidate_contours.append((c, area, mean_val))
             candidate_centers.append((x + w/2, y + h/2))
             
+    print(f"Found {len(candidate_contours)} candidate caliper arms.")
+    
     # 3. Group candidate arms that are close to each other (within 25 pixels)
-    # A true caliper is composed of multiple arms (2 to 4 segments)
+    # This filters out any isolated random noise that happens to have a dark border
     num_candidates = len(candidate_contours)
     groups = []
     visited = [False] * num_candidates
@@ -59,13 +59,15 @@ def process_image(input_path, output_path):
     for i in range(num_candidates):
         if visited[i]: continue
         
+        # Start a new group
         group = [i]
         visited[i] = True
         
+        # Find all other candidates close to this one
         for j in range(num_candidates):
             if visited[j]: continue
             
-            # Distance between contour centers
+            # Distance between centers
             dist = np.sqrt((candidate_centers[i][0] - candidate_centers[j][0])**2 + 
                            (candidate_centers[i][1] - candidate_centers[j][1])**2)
             if dist < 25:
@@ -74,37 +76,23 @@ def process_image(input_path, output_path):
                 
         groups.append(group)
         
-    # 4. Color the grouped contours yellow
+    # 4. Draw/Color the valid calipers
     img_out = img.copy()
-    valid_calipers_count = 0
+    valid_count = 0
     
     for group in groups:
-        # We only accept groups with at least 2 adjacent segments to filter out isolated noise
+        # A valid caliper must have at least 2 arms detected near each other
+        # (since '+' has 4 arms, and 'x' has at least 2 separate diagonal segments)
         if len(group) >= 2:
-            valid_calipers_count += 1
+            valid_count += 1
+            print(f"Caliper Group {valid_count} contains {len(group)} arms. Coloring them yellow.")
             for idx in group:
-                c = candidate_contours[idx]
-                # Fill the contour with yellow (BGR: 0, 255, 255)
+                c, area, border_mean = candidate_contours[idx]
+                # Color the white pixels of this contour yellow
                 cv2.drawContours(img_out, [c], -1, (0, 255, 255), cv2.FILLED)
                 
     cv2.imwrite(output_path, img_out)
-    print(f"Processed image saved to: {output_path}. Found {valid_calipers_count} caliper markers.")
-
-def main():
-    raw_dir = os.path.join("data", "raw data")
-    processed_dir = os.path.join("data", "processed data")
-    os.makedirs(processed_dir, exist_ok=True)
-    
-    test_file_name = "test_0001.jpg"
-    input_path = os.path.join(raw_dir, test_file_name)
-    
-    base_name, ext = os.path.splitext(test_file_name)
-    output_path = os.path.join(processed_dir, f"{base_name}_processed{ext}")
-    
-    if os.path.exists(input_path):
-        process_image(input_path, output_path)
-    else:
-        print(f"Error: Could not find input file at {input_path}")
+    print(f"Saved processed image to: {output_path}. Identified {valid_count} caliper pairs/markers.")
 
 if __name__ == "__main__":
-    main()
+    process_image_by_border("data/raw data/test_0001.jpg", "data/processed data/test_0001_grouped.jpg")
