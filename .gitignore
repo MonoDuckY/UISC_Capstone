@@ -54,6 +54,6 @@ frontend/.DS_Store
 
 #python
 venv
-data
+data/raw data
 inputs
 results
