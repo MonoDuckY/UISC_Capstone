@@ -96,7 +96,7 @@ Open `process_images.py` and locate:
 processed_img, all_boxes = highlight_and_extract_all_boxes(
     img_to_process,
     templates_dir,
-    threshold=0.72
+    threshold=0.6
 )
 ```
 
