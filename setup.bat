@@ -1,23 +1,39 @@
 @echo off
-title Cai Dat Moi Truong OCR
-echo ===================================================
-echo   DANG KHOI TAO MOI TRUONG VA CAI DAT THU VIEN
-echo ===================================================
+title Setup Moi Truong Tool Xoa Chu
+echo ==========================================
+echo    CÀI ĐẶT MÔI TRƯỜNG VÀ THƯ MỤC
+echo ==========================================
+echo.
 
-:: 1. Tao moi truong ao (Dung 'python' thay vi 'python3' tren Windows)
-echo [INFO] Dang tao moi truong ao 'env_ocr'...
-python -m venv env_ocr
+echo [1/3] Kiem tra va tao thu muc anh...
+if not exist "input_images" (
+    mkdir input_images
+    echo - Da tao thu muc 'input_images'
+)
+if not exist "output_images" (
+    mkdir output_images
+    echo - Da tao thu muc 'output_images'
+)
 
-:: 2. Kich hoat moi truong ao tren Windows
-echo [INFO] Dang kich hoat moi truong ao...
-call env_ocr\Scripts\activate.bat
+echo.
+if exist "env\Scripts\activate.bat" goto bo_qua_tao_moi
 
-:: 3. Nang cap pip va cai dat thu vien qua requirements.txt
-echo [INFO] Dang nang cap pip va cai dat cac thu vien can thiet...
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+echo [2/3] Dang tao moi truong ao (virtual environment)...
+python -m venv env
+goto buoc_tiep_theo
 
-echo ===================================================
-echo   === Da cai dat xong moi truong ao va cac thu vien! ===
-echo ===================================================
+:bo_qua_tao_moi
+echo [2/3] Moi truong ao 'env' da ton tai, bo qua tao moi.
+
+:buoc_tiep_theo
+echo.
+echo [3/3] Dang kich hoat va cai dat thu vien tu requirements.txt...
+call env\Scripts\activate.bat
+pip install -r requirements.txt
+
+echo.
+echo ==========================================
+echo SETUP HOÀN TẤT! 
+echo Vui long copy anh can xu ly vao thu muc 'input_images'
+echo sau do chay file '2_run.bat' de su dung tool.
 pause

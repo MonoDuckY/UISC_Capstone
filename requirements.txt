@@ -1,3 +1,5 @@
-opencv-python-headless
 easyocr
+opencv-python
+pandas
+openpyxl
 numpy
