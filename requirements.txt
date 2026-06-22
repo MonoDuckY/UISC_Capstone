@@ -1,11 +1,7 @@
-<<<<<<< HEAD
 easyocr
 opencv-python
 pandas
 openpyxl
 numpy
-=======
-numpy
 sewar
 pillow
->>>>>>> data-setup
