@@ -54,23 +54,20 @@ class UltrasoundCleanerApp:
         hardware_color = "#2e7d32" if self.has_gpu else "#c62828"
         tk.Label(left_frame, text=f"Hardware: {hardware_text}", fg=hardware_color, bg="#f4f4f4", font=("Arial", 9, "italic")).pack(pady=(0, 10))
 
-        # 2. Khung bên phải (Khu vực hiển thị ảnh) - CHUYỂN SANG BỐ CỤC TRÁI/PHẢI
+        # 2. Khung bên phải (Khu vực hiển thị ảnh)
         right_frame = tk.Frame(root, bg="white")
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Cấu hình lưới (Grid): Ép 2 cột chia nhau đúng tỷ lệ 50:50
         right_frame.columnconfigure(0, weight=1, uniform="half")
         right_frame.columnconfigure(1, weight=1, uniform="half")
         right_frame.rowconfigure(1, weight=1)
 
-        # Tiêu đề
         self.lbl_input_title = tk.Label(right_frame, text="ẢNH GỐC (INPUT)", font=("Arial", 10, "bold"), bg="#ffebee", fg="#c62828")
         self.lbl_input_title.grid(row=0, column=0, sticky="ew", padx=(0, 2), pady=(0, 5))
         
         self.lbl_output_title = tk.Label(right_frame, text="ẢNH ĐÃ XÓA CHỮ (OUTPUT)", font=("Arial", 10, "bold"), bg="#e3f2fd", fg="#1565c0")
         self.lbl_output_title.grid(row=0, column=1, sticky="ew", padx=(2, 0), pady=(0, 5))
 
-        # Khung chứa ảnh
         self.panel_input = tk.Label(right_frame, bg="#2c3e50", text="[ Chưa có ảnh ]", fg="white")
         self.panel_input.grid(row=1, column=0, sticky="nsew", padx=(0, 2))
 
@@ -107,7 +104,6 @@ class UltrasoundCleanerApp:
     def display_image(self, path, panel):
         try:
             img = Image.open(path)
-            
             self.root.update_idletasks() 
             panel_width = panel.winfo_width()
             panel_height = panel.winfo_height()
@@ -138,7 +134,7 @@ class UltrasoundCleanerApp:
 
     def process_images_thread(self):
         device_name = "GPU" if self.has_gpu else "CPU"
-        self.root.after(0, self.status_label.config, {'text': f"Đang nạp ({device_name})..."})
+        self.root.after(0, self.status_label.config, {'text': f"Đang nạp AI ({device_name})..."})
         
         if self.reader is None:
             self.reader = easyocr.Reader(['vi', 'en'], gpu=self.has_gpu)
@@ -153,7 +149,16 @@ class UltrasoundCleanerApp:
             filename = os.path.basename(img_path)
             self.root.after(0, self.status_label.config, {'text': f"Đang xử lý: {filename} ({i+1}/{len(self.file_paths)})"})
             
-            img = cv2.imread(img_path)
+            # --- CÁCH ĐỌC ẢNH MỚI: HỖ TRỢ TIẾNG VIỆT/UNICODE ---
+            try:
+                # Đọc byte từ file bằng numpy để tránh lỗi đường dẫn tiếng Việt của cv2
+                img_array = np.fromfile(img_path, dtype=np.uint8)
+                img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            except Exception as e:
+                print(f"Lỗi đọc file {filename}: {e}")
+                self.update_progress(i + 1)
+                continue
+
             if img is None: 
                 self.update_progress(i + 1)
                 continue
@@ -203,7 +208,16 @@ class UltrasoundCleanerApp:
             })
             
             out_path = os.path.join(output_dir, f"cleaned_{filename}")
-            cv2.imwrite(out_path, cleaned_img)
+            
+            # --- CÁCH LƯU ẢNH MỚI: HỖ TRỢ TIẾNG VIỆT/UNICODE ---
+            try:
+                # Mã hóa ảnh thành byte bằng cv2, sau đó dùng numpy để lưu file
+                _, ext = os.path.splitext(out_path)
+                is_success, im_buf_arr = cv2.imencode(ext, cleaned_img)
+                if is_success:
+                    im_buf_arr.tofile(out_path)
+            except Exception as e:
+                print(f"Lỗi lưu file {filename}: {e}")
             
             self.update_progress(i + 1)
             self.root.after(0, self.listbox.selection_clear, 0, tk.END)
@@ -226,7 +240,7 @@ class UltrasoundCleanerApp:
         self.status_label.config(text="Hoàn thành!")
         self.btn_process.config(state=tk.NORMAL, bg="#2196F3")
         self.btn_select.config(state=tk.NORMAL, bg="#4CAF50")
-        messagebox.showinfo("Thành công", "Đã xử lý xong!")
+        messagebox.showinfo("Thành công", "Đã xử lý xong toàn bộ ảnh!")
 
 if __name__ == "__main__":
     root = tk.Tk()
