@@ -27,13 +27,13 @@ def parse_args():
     )
     parser.add_argument(
         "--raw-dir",
-        default=os.path.join("data", "raw data"),
-        help="Path to the directory containing raw images (default: data/raw data)"
+        default=os.path.join("input_images"),
+        help="Path to the directory containing raw images (default: input_images)"
     )
     parser.add_argument(
         "--processed-dir",
-        default=os.path.join("data", "processed data"),
-        help="Path to the directory containing processed images (default: data/processed data)"
+        default=os.path.join("output_images"),
+        help="Path to the directory containing processed images (default: output_images)"
     )
     parser.add_argument(
         "--output-csv",
@@ -68,24 +68,25 @@ def get_image_files(directory):
 def match_files(raw_map, processed_map):
     """
     Matches processed images to raw images based on naming convention:
-    [raw_name]_processed -> [raw_name]
+    cleaned_[raw_name] -> [raw_name]
     """
     matches = []
+    prefix = "cleaned_"
+    
     for proc_name, proc_path in processed_map.items():
-        # Look for '_processed' suffix
-        if proc_name.endswith("_processed"):
-            raw_base_name = proc_name[:-len("_processed")]
+        # Kiểm tra xem tên file làm sạch có bắt đầu bằng "cleaned_" không
+        if proc_name.startswith(prefix):
+            # Cắt bỏ phần "cleaned_" ở đầu để lấy tên gốc
+            raw_base_name = proc_name[len(prefix):]
         else:
-            # Fallback if user didn't use underscore but has "processed"
-            if proc_name.endswith("processed"):
-                raw_base_name = proc_name[:-len("processed")]
-            else:
-                raw_base_name = proc_name
+            # Fallback nếu file không có tiền tố "cleaned_"
+            raw_base_name = proc_name
 
+        # Khớp với danh sách file gốc
         if raw_base_name in raw_map:
             matches.append((raw_map[raw_base_name], proc_path))
         else:
-            print(f"Warning: No matching raw image found for processed file: '{os.path.basename(proc_path)}' (looked for prefix: '{raw_base_name}')")
+            print(f"Warning: No matching raw image found for processed file: '{os.path.basename(proc_path)}' (looked for: '{raw_base_name}')")
     
     return matches
 
