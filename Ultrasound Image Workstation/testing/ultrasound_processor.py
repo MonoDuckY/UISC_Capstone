@@ -58,137 +58,40 @@ def apply_srad(img_rgb, n_iter):
     gray_filtered = np.clip(gray_filtered, 0, 255).astype(np.uint8)
     return cv2.cvtColor(gray_filtered, cv2.COLOR_GRAY2RGB)
 
-def compute_enl_hras(gray, block_size=32, top_k=8, return_boxes=False, search_roi=None):
-    """
-    Automatic ENL estimation using an HRAS-like strategy.
-
-    If search_roi is provided as (xmin, ymin, xmax, ymax), HRAS searches only
-    inside that manually selected ROI. Returned boxes are still in full-image
-    coordinates so they can be drawn correctly on the displayed image.
-
-    ENL = mean^2 / std^2 is computed on the selected homogeneous blocks.
-    """
+def compute_enl_hras(gray, block_size=32, top_k=8):
     gray_f = gray.astype(np.float32)
-    img_h, img_w = gray_f.shape
-
-    if search_roi is not None:
-        rx1, ry1, rx2, ry2 = [int(v) for v in search_roi]
-        rx1 = max(0, min(rx1, img_w - 1))
-        ry1 = max(0, min(ry1, img_h - 1))
-        rx2 = max(rx1 + 1, min(rx2, img_w))
-        ry2 = max(ry1 + 1, min(ry2, img_h))
-    else:
-        rx1, ry1, rx2, ry2 = 0, 0, img_w, img_h
-
-    roi_area = gray_f[ry1:ry2, rx1:rx2]
-    h, w = roi_area.shape
-
-    candidates = []
-
-    # If the manual ROI is smaller than the default block, shrink the block.
-    effective_block = min(block_size, h, w)
-    if effective_block < 8:
-        m = float(np.mean(roi_area))
-        s = float(np.std(roi_area))
-        fallback_enl = (m * m) / (s * s + 1e-8)
-        if return_boxes:
-            return fallback_enl, [(rx1, ry1, rx2, ry2)]
-        return fallback_enl
-
-    for y in range(0, h - effective_block + 1, effective_block):
-        for x in range(0, w - effective_block + 1, effective_block):
-            block = roi_area[y:y + effective_block, x:x + effective_block]
-            mean = float(np.mean(block))
-            std = float(np.std(block))
-
-            # Reject very dark/bright blocks and nearly constant invalid areas.
-            if mean < 15.0 or mean > 240.0 or std < 1e-6:
+    h, w = gray_f.shape
+    enls = []
+    scores = []
+    for y in range(0, h-block_size+1, block_size):
+        for x in range(0, w-block_size+1, block_size):
+            roi = gray_f[y:y+block_size, x:x+block_size]
+            mean = float(np.mean(roi))
+            std = float(np.std(roi))
+            if mean < 15 or mean > 240 or std < 1e-6:
                 continue
-
-            gx = cv2.Sobel(block, cv2.CV_32F, 1, 0, ksize=3)
-            gy = cv2.Sobel(block, cv2.CV_32F, 0, 1, ksize=3)
-            grad = float(np.mean(np.sqrt(gx * gx + gy * gy)))
-
-            enl = (mean * mean) / (std * std + 1e-8)
-            score = 1.0 / (std + grad + 1e-6)
-
-            full_x1 = rx1 + x
-            full_y1 = ry1 + y
-            full_x2 = full_x1 + effective_block
-            full_y2 = full_y1 + effective_block
-
-            candidates.append({
-                "score": score,
-                "enl": enl,
-                "box": (full_x1, full_y1, full_x2, full_y2),
-                "mean": mean,
-                "std": std,
-                "grad": grad,
-            })
-
-    if not candidates:
-        m = float(np.mean(roi_area))
-        s = float(np.std(roi_area))
-        fallback_enl = (m * m) / (s * s + 1e-8)
-        if return_boxes:
-            return fallback_enl, [(rx1, ry1, rx2, ry2)]
-        return fallback_enl
-
-    candidates.sort(key=lambda item: item["score"], reverse=True)
-    selected = candidates[:min(top_k, len(candidates))]
-    vals = [item["enl"] for item in selected]
-    boxes = [item["box"] for item in selected]
-    enl_value = float(np.median(vals))
-
-    if return_boxes:
-        return enl_value, boxes
-    return enl_value
-
-
-def compute_cnr_from_two_rois(gray, roi1_box=None, roi2_box=None):
-    """
-    Compute CNR using two user-selected ROIs:
-    ROI 1: target/tissue region of interest
-    ROI 2: background or reference tissue region
-
-    CNR = |mu1 - mu2| / sqrt(std1^2 + std2^2)
-    """
-    if roi1_box is None or roi2_box is None:
-        return None
-
-    h, w = gray.shape
-
-    def crop_roi(box):
-        x1, y1, x2, y2 = [int(v) for v in box]
-        x1 = max(0, min(x1, w - 1))
-        y1 = max(0, min(y1, h - 1))
-        x2 = max(x1 + 1, min(x2, w))
-        y2 = max(y1 + 1, min(y2, h))
-        return gray[y1:y2, x1:x2].astype(np.float32)
-
-    roi1 = crop_roi(roi1_box)
-    roi2 = crop_roi(roi2_box)
-
-    if roi1.size == 0 or roi2.size == 0:
-        return None
-
-    mu1 = float(np.mean(roi1))
-    mu2 = float(np.mean(roi2))
-    std1 = float(np.std(roi1))
-    std2 = float(np.std(roi2))
-
-    return abs(mu1 - mu2) / (np.sqrt(std1 * std1 + std2 * std2) + 1e-8)
-
-
+            gx = cv2.Sobel(roi, cv2.CV_32F, 1, 0, ksize=3)
+            gy = cv2.Sobel(roi, cv2.CV_32F, 0, 1, ksize=3)
+            grad = float(np.mean(np.sqrt(gx*gx + gy*gy)))
+            enl = (mean*mean)/(std*std + 1e-8)
+            score = 1.0/(std + grad + 1e-6)
+            enls.append(enl)
+            scores.append(score)
+    if not enls:
+        m=float(np.mean(gray_f)); s=float(np.std(gray_f))
+        return (m*m)/(s*s+1e-8)
+    idx = np.argsort(scores)[-min(top_k,len(scores)):]
+    vals=[enls[i] for i in idx]
+    return float(np.median(vals))
 
 
 # ==============================================================================
 # HỆ THỐNG THUẬT TOÁN ĐÁNH GIÁ TIÊU CHÍ CHẤT LƯỢNG THEO NHÓM NGHIÊN CỨU
 # ==============================================================================
-def analyze_medical_criteria(img_current, img_reference=None, roi_box=None, roi2_box=None):
+def analyze_medical_criteria(img_current, img_reference=None):
     """
     Tính toán chi tiết các tiêu chí y khoa dựa trên các công thức khoa học:
-    Trường nhìn (R), Độ sáng (SNR), Độ tương phản (CNR), Nhiễu hạt (ENL), độ sắc nét (VoL/Tenengrad), PSNR, Nhiễu hạt (VoL, Tenengrad)
+    Trường nhìn (R), Độ sáng (SNR), Độ tương phản (CNR), Độ sắc nét (ENL, PSNR), Nhiễu hạt (VoL, Tenengrad)
     """
     if img_current is None:
         return None
@@ -238,19 +141,12 @@ def analyze_medical_criteria(img_current, img_reference=None, roi_box=None, roi2
         snr_color = "#e74c3c"
 
     # 3. TIÊU CHÍ ĐỘ TƯƠNG PHẢN (CNR)
-    # Nếu người dùng đã khoanh đủ ROI 1 và ROI 2:
-    # ROI 1 = vùng mô cần quan sát, ROI 2 = vùng nền hoặc mô đối chứng.
-    # CNR = |mu1 - mu2| / sqrt(std1^2 + std2^2)
-    roi_cnr = compute_cnr_from_two_rois(gray, roi_box, roi2_box)
-    if roi_cnr is not None:
-        cnr_val = roi_cnr
-    else:
-        # Fallback tự động cũ khi chưa có đủ 2 ROI.
-        mask_a = (gray > mean_signal)
-        mask_b = (gray <= mean_signal) & (gray > 15)
-        sa = np.mean(gray[mask_a]) if np.any(mask_a) else 255.0
-        sb = np.mean(gray[mask_b]) if np.any(mask_b) else 0.0
-        cnr_val = np.abs(sa - sb) / std_noise
+    # Mô phỏng vùng nội mạc tử cung (A) và cơ tử cung (B) thông qua phân ngưỡng Otsu nhị phân nâng cao
+    mask_a = (gray > mean_signal)
+    mask_b = (gray <= mean_signal) & (gray > 15)
+    sa = np.mean(gray[mask_a]) if np.any(mask_a) else 255.0
+    sb = np.mean(gray[mask_b]) if np.any(mask_b) else 0.0
+    cnr_val = np.abs(sa - sb) / std_noise
     
     if cnr_val >= 1.5:
         cnr_status = "Ideal (Good/Excellent)"
@@ -262,21 +158,20 @@ def analyze_medical_criteria(img_current, img_reference=None, roi_box=None, roi2
         cnr_status = "Discard (Poor)"
         cnr_color = "#e74c3c"
 
-    # 4. TIÊU CHÍ NHIỄU HẠT / ĐỘ ĐỒNG NHẤT (ENL) & PSNR
-    enl_val = compute_enl_hras(gray, search_roi=roi_box)
+    # 4. TIÊU CHÍ ĐỘ SẮC NÉT (ENL & PSNR)
+    enl_val = compute_enl_hras(gray)
 
-    # ENL thresholds for ultrasound preprocessing evaluation
-    # Ideal: ENL > 20
-    # Acceptable: ENL between 10 and 20
-    # Discard: ENL < 10
-    if enl_val > 20.0:
-        enl_status = "Ideal"
+    if enl_val >= 100.0:
+        enl_status = "Excellent"
         enl_color = "#2ecc71"
-    elif 10.0 <= enl_val <= 20.0:
+    elif enl_val >= 50.0:
+        enl_status = "Good"
+        enl_color = "#27ae60"
+    elif enl_val >= 20.0:
         enl_status = "Acceptable"
         enl_color = "#f1c40f"
     else:
-        enl_status = "Discard (Over-processed/Burnt)"
+        enl_status = "Poor"
         enl_color = "#e74c3c"
         
     # Tính toán PSNR nếu có ảnh đối chứng gốc
@@ -300,20 +195,9 @@ def analyze_medical_criteria(img_current, img_reference=None, roi_box=None, roi2
                 psnr_text = f"PSNR: {psnr_val:.2f} dB (Discard)"
                 psnr_color = "#e74c3c"
 
-    # 5. TIÊU CHÍ ĐỘ SẮC NÉT & KHẢ NĂNG BẮT NÉT (VoL & Tenengrad)
-    # Nếu có ROI 1, VoL và Tenengrad chỉ được tính trong ROI 1.
-    # Nếu chưa có ROI 1, tính trên toàn ảnh như trước.
-    metric_gray = gray
-    if roi_box is not None:
-        x1, y1, x2, y2 = [int(v) for v in roi_box]
-        x1 = max(0, min(x1, w - 1))
-        y1 = max(0, min(y1, h - 1))
-        x2 = max(x1 + 1, min(x2, w))
-        y2 = max(y1 + 1, min(y2, h))
-        metric_gray = gray[y1:y2, x1:x2]
-
-    # Variance of Laplacian (VoL) để phát hiện ảnh mất nét / mất chi tiết biên
-    vol_val = cv2.Laplacian(metric_gray, cv2.CV_64F).var()
+    # 5. TIÊU CHÍ NHIỄU HẠT & KHẢ NĂNG BẮT NÉT (VoL & Tenengrad)
+    # Variance of Laplacian (VoL) để phát hiện ảnh mất nét
+    vol_val = cv2.Laplacian(gray, cv2.CV_64F).var()
     if vol_val >= 150.0:
         vol_status = "Ideal (Sharp)"
         vol_color = "#2ecc71"
@@ -324,10 +208,10 @@ def analyze_medical_criteria(img_current, img_reference=None, roi_box=None, roi2
         vol_status = "Discard (Out of focus)"
         vol_color = "#e74c3c"
         
-    # Tenengrad Gradient để đánh giá cấu trúc biên / độ sắc nét
-    gx = cv2.Sobel(metric_gray, cv2.CV_64F, 1, 0, ksize=3)
-    gy = cv2.Sobel(metric_gray, cv2.CV_64F, 0, 1, ksize=3)
-    tenengrad_val = np.mean(gx**2 + gy**2) / 100.0  # Chuẩn hóa giá trị hiển thị
+    # Tenengrad Gradient để đánh giá cấu trúc biên sau chỉnh sửa
+    gx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+    gz = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+    tenengrad_val = np.mean(gx**2 + gz**2) / 100.0  # Chuẩn hóa giá trị hiển thị
 
     return {
         "fov_r": r_fov, "fov_status": fov_status, "fov_color": fov_color,
@@ -386,48 +270,17 @@ class CustomImageLabel(QLabel):
                 self.calculate_orig_coordinates()
             else:
                 self.current_rect = QRect()
-                self.main_app.clear_roi_selection(self.main_app.active_roi_id)
+                self.main_app.clear_roi_selection()
             self.update()
 
     def paintEvent(self, event):
         super().paintEvent(event)
-
-        if self.main_app.orig_image is None or not self.pixmap():
-            return
-
-        painter = QPainter(self)
-
-        def draw_stored_roi(roi_box, color, label):
-            if roi_box is None or self.actual_pixmap_rect.width() <= 0 or self.actual_pixmap_rect.height() <= 0:
-                return
-
-            orig_h, orig_w = self.main_app.orig_image.shape[:2]
-            sx = self.actual_pixmap_rect.width() / orig_w
-            sy = self.actual_pixmap_rect.height() / orig_h
-
-            x1, y1, x2, y2 = roi_box
-            rx = self.actual_pixmap_rect.left() + int(x1 * sx)
-            ry = self.actual_pixmap_rect.top() + int(y1 * sy)
-            rw = int((x2 - x1) * sx)
-            rh = int((y2 - y1) * sy)
-
-            pen = QPen(color, 2, Qt.PenStyle.SolidLine)
-            painter.setPen(pen)
-            painter.drawRect(QRect(rx, ry, rw, rh))
-            painter.drawText(rx + 4, max(ry - 4, 12), label)
-
-        draw_stored_roi(self.main_app.roi_coordinates, QColor(255, 215, 0), "ROI 1")
-        draw_stored_roi(self.main_app.roi2_coordinates, QColor(52, 152, 219), "ROI 2")
-
         if self.roi_enabled and not self.current_rect.isNull():
-            if self.main_app.active_roi_id == 1:
-                pen = QPen(QColor(255, 215, 0), 2, Qt.PenStyle.DashLine)
-            else:
-                pen = QPen(QColor(52, 152, 219), 2, Qt.PenStyle.DashLine)
+            painter = QPainter(self)
+            pen = QPen(QColor(255, 215, 0), 2, Qt.PenStyle.DashLine)
             painter.setPen(pen)
             painter.drawRect(self.current_rect)
-
-        painter.end()
+            painter.end()
 
     def calculate_orig_coordinates(self):
         if self.main_app.orig_image is None or not self.pixmap():
@@ -469,10 +322,7 @@ class UltrasoundProcessorApp(QMainWindow):
         
         self.highlight_mask = None      
         self.all_detected_boxes = []    
-        self.roi_coordinates = None      # ROI 1: target/tissue region
-        self.roi2_coordinates = None     # ROI 2: background/reference region
-        self.active_roi_id = 1
-        self.auto_roi_boxes = []
+        self.roi_coordinates = None     
 
         self.init_ui()
         
@@ -496,17 +346,11 @@ class UltrasoundProcessorApp(QMainWindow):
         self.btn_open.clicked.connect(self.load_image)
         self.btn_open.setStyleSheet("font-weight: bold; padding: 5px;")
         
-        self.btn_toggle_roi = QPushButton("🎯 Turn ON ROI 1 Selection")
+        self.btn_toggle_roi = QPushButton("🎯 Turn ON ROI Selection")
         self.btn_toggle_roi.setCheckable(True)
-        self.btn_toggle_roi.clicked.connect(lambda: self.toggle_roi_mode(1))
+        self.btn_toggle_roi.clicked.connect(self.toggle_roi_mode)
         self.btn_toggle_roi.setStyleSheet("background-color: #8e44ad; color: white; padding: 5px;")
         self.btn_toggle_roi.setEnabled(False)
-
-        self.btn_toggle_roi2 = QPushButton("🟦 Turn ON ROI 2 Selection")
-        self.btn_toggle_roi2.setCheckable(True)
-        self.btn_toggle_roi2.clicked.connect(lambda: self.toggle_roi_mode(2))
-        self.btn_toggle_roi2.setStyleSheet("background-color: #2980b9; color: white; padding: 5px;")
-        self.btn_toggle_roi2.setEnabled(False)
         
         self.btn_save_snapshot = QPushButton("📸 Lock Current to Left View")
         self.btn_save_snapshot.clicked.connect(self.save_to_left_view)
@@ -523,7 +367,6 @@ class UltrasoundProcessorApp(QMainWindow):
         
         file_layout.addWidget(self.btn_open)
         file_layout.addWidget(self.btn_toggle_roi)
-        file_layout.addWidget(self.btn_toggle_roi2)
         file_layout.addWidget(self.btn_save_snapshot)
         file_layout.addWidget(self.btn_reset_left)
         file_layout.addWidget(self.btn_reset_params)
@@ -555,11 +398,6 @@ class UltrasoundProcessorApp(QMainWindow):
         self.chk_highlight.setStyleSheet("font-weight: bold; color: #e74c3c; margin-bottom: 2px;")
         self.chk_highlight.stateChanged.connect(self.process_and_display)
         param_layout.addWidget(self.chk_highlight)
-
-        self.chk_auto_roi_border = QCheckBox("🟩 Auto ROI Border (HRAS ENL)")
-        self.chk_auto_roi_border.setStyleSheet("font-weight: bold; color: #2ecc71; margin-bottom: 2px;")
-        self.chk_auto_roi_border.stateChanged.connect(self.process_and_display)
-        param_layout.addWidget(self.chk_auto_roi_border)
         
         self.lbl_thresh_title = QLabel("Caliper Match Threshold:")
         param_layout.addWidget(self.lbl_thresh_title)
@@ -680,8 +518,8 @@ class UltrasoundProcessorApp(QMainWindow):
         self.lbl_l_fov = QLabel("Field of View (R): N/A")
         self.lbl_l_brightness = QLabel("Brightness (SNR): N/A")
         self.lbl_l_contrast = QLabel("Contrast (CNR): N/A")
-        self.lbl_l_sharpness = QLabel("Noise (ENL): N/A")
-        self.lbl_l_speckle = QLabel("Sharpness (VoL & Tenengrad): N/A")
+        self.lbl_l_sharpness = QLabel("Sharpness (ENL): N/A")
+        self.lbl_l_speckle = QLabel("Speckle Noise (VoL): N/A")
         
         left_crit_layout.addWidget(self.lbl_l_fov)
         left_crit_layout.addWidget(self.lbl_l_brightness)
@@ -712,8 +550,8 @@ class UltrasoundProcessorApp(QMainWindow):
         self.lbl_r_fov = QLabel("Field of View (R): N/A")
         self.lbl_r_brightness = QLabel("Brightness (SNR): N/A")
         self.lbl_r_contrast = QLabel("Contrast (CNR): N/A")
-        self.lbl_r_sharpness = QLabel("Noise (ENL & PSNR): N/A")
-        self.lbl_r_speckle = QLabel("Sharpness (VoL & Tenengrad): N/A")
+        self.lbl_r_sharpness = QLabel("Sharpness (ENL & PSNR): N/A")
+        self.lbl_r_speckle = QLabel("Speckle Noise (VoL & Tenengrad): N/A")
         
         right_crit_layout.addWidget(self.lbl_r_fov)
         right_crit_layout.addWidget(self.lbl_r_brightness)
@@ -738,76 +576,27 @@ class UltrasoundProcessorApp(QMainWindow):
     # ==============================================================================
     # QUẢN LÝ CHẾ ĐỘ KHOANH VÙNG ROI ĐỘNG
     # ==============================================================================
-    def toggle_roi_mode(self, roi_id=1):
-        self.active_roi_id = roi_id
-
-        if roi_id == 1:
-            is_checked = self.btn_toggle_roi.isChecked()
-            if is_checked:
-                self.btn_toggle_roi2.blockSignals(True)
-                self.btn_toggle_roi2.setChecked(False)
-                self.btn_toggle_roi2.setText("🟦 Turn ON ROI 2 Selection")
-                self.btn_toggle_roi2.setStyleSheet("background-color: #2980b9; color: white; padding: 5px;")
-                self.btn_toggle_roi2.blockSignals(False)
-
-                self.btn_toggle_roi.setText("🛑 Turn OFF ROI 1 Selection")
-                self.btn_toggle_roi.setStyleSheet("background-color: #d35400; color: white; padding: 5px;")
-                self.lbl_orig_view.set_roi_enabled(True)
-                self.status_bar.showMessage("ROI 1 Mode: ON. Drag on the left image to select target/tissue region.")
-            else:
-                self.btn_toggle_roi.setText("🎯 Turn ON ROI 1 Selection")
-                self.btn_toggle_roi.setStyleSheet("background-color: #8e44ad; color: white; padding: 5px;")
-                self.lbl_orig_view.set_roi_enabled(False)
-                self.clear_roi_selection(1)
+    def toggle_roi_mode(self):
+        is_checked = self.btn_toggle_roi.isChecked()
+        if is_checked:
+            self.btn_toggle_roi.setText("🛑 Turn OFF ROI Selection")
+            self.btn_toggle_roi.setStyleSheet("background-color: #d35400; color: white; padding: 5px;")
+            self.lbl_orig_view.set_roi_enabled(True)
+            self.status_bar.showMessage("ROI Mode: ON. Click and drag left mouse button on left image.")
         else:
-            is_checked = self.btn_toggle_roi2.isChecked()
-            if is_checked:
-                self.btn_toggle_roi.blockSignals(True)
-                self.btn_toggle_roi.setChecked(False)
-                self.btn_toggle_roi.setText("🎯 Turn ON ROI 1 Selection")
-                self.btn_toggle_roi.setStyleSheet("background-color: #8e44ad; color: white; padding: 5px;")
-                self.btn_toggle_roi.blockSignals(False)
-
-                self.btn_toggle_roi2.setText("🛑 Turn OFF ROI 2 Selection")
-                self.btn_toggle_roi2.setStyleSheet("background-color: #d35400; color: white; padding: 5px;")
-                self.lbl_orig_view.set_roi_enabled(True)
-                self.status_bar.showMessage("ROI 2 Mode: ON. Drag on the left image to select background/reference region.")
-            else:
-                self.btn_toggle_roi2.setText("🟦 Turn ON ROI 2 Selection")
-                self.btn_toggle_roi2.setStyleSheet("background-color: #2980b9; color: white; padding: 5px;")
-                self.lbl_orig_view.set_roi_enabled(False)
-                self.clear_roi_selection(2)
+            self.btn_toggle_roi.setText("🎯 Turn ON ROI Selection")
+            self.btn_toggle_roi.setStyleSheet("background-color: #8e44ad; color: white; padding: 5px;")
+            self.lbl_orig_view.set_roi_enabled(False)
+            self.clear_roi_selection()
 
     def update_roi_area(self, xmin, ymin, xmax, ymax):
-        if self.active_roi_id == 1:
-            self.roi_coordinates = [xmin, ymin, xmax, ymax]
-            self.status_bar.showMessage(
-                f"ROI 1 locked: X[{xmin}->{xmax}], Y[{ymin}->{ymax}]. "
-                "HRAS Auto ROI will search only inside ROI 1."
-            )
-        else:
-            self.roi2_coordinates = [xmin, ymin, xmax, ymax]
-            self.status_bar.showMessage(
-                f"ROI 2 locked: X[{xmin}->{xmax}], Y[{ymin}->{ymax}]. "
-                "CNR will use ROI 1 vs ROI 2 when both are available."
-            )
-
-        self.lbl_orig_view.update()
+        self.roi_coordinates = [xmin, ymin, xmax, ymax]
+        self.status_bar.showMessage(f"ROI area locked: X[{xmin}->{xmax}], Y[{ymin}->{ymax}].")
         self.process_and_display()
 
-    def clear_roi_selection(self, roi_id=None):
-        if roi_id == 1:
-            self.roi_coordinates = None
-            self.status_bar.showMessage("ROI 1 cleared. HRAS Auto ROI will scan the full image area.")
-        elif roi_id == 2:
-            self.roi2_coordinates = None
-            self.status_bar.showMessage("ROI 2 cleared. CNR will use automatic fallback until ROI 1 and ROI 2 are selected.")
-        else:
-            self.roi_coordinates = None
-            self.roi2_coordinates = None
-            self.status_bar.showMessage("ROI 1 and ROI 2 cleared.")
-
-        self.lbl_orig_view.update()
+    def clear_roi_selection(self):
+        self.roi_coordinates = None
+        self.status_bar.showMessage("ROI cleared. Scanning the full image area.")
         self.process_and_display()
 
     # ==============================================================================
@@ -918,9 +707,7 @@ class UltrasoundProcessorApp(QMainWindow):
 
     def toggle_controls(self, enabled):
         self.btn_toggle_roi.setEnabled(enabled)
-        self.btn_toggle_roi2.setEnabled(enabled)
         self.chk_highlight.setEnabled(enabled)
-        self.chk_auto_roi_border.setEnabled(enabled)
         self.slider_detect_thresh.setEnabled(enabled)
         self.combo_filter.setEnabled(enabled)
         self.slider_noise.setEnabled(enabled)
@@ -944,33 +731,21 @@ class UltrasoundProcessorApp(QMainWindow):
             self.lbl_l_fov.setText(f"Field of View (R): {metrics['fov_r']:.3f} ➔ <b style='color:{metrics['fov_color']};'>{metrics['fov_status']}</b>")
             self.lbl_l_brightness.setText(f"Brightness (SNR): {metrics['snr']:.2f} ➔ <b style='color:{metrics['snr_color']};'>{metrics['snr_status']}</b>")
             self.lbl_l_contrast.setText(f"Contrast (CNR): {metrics['cnr']:.2f} ➔ <b style='color:{metrics['cnr_color']};'>{metrics['cnr_status']}</b>")
-            self.lbl_l_sharpness.setText(f"Noise (ENL): {metrics['enl']:.2f} ➔ <b style='color:{metrics['enl_color']};'>{metrics['enl_status']}</b>")
-            self.lbl_l_speckle.setText(
-                f"Sharpness (VoL): {metrics['vol']:.1f} ➔ "
-                f"<b style='color:{metrics['vol_color']};'>{metrics['vol_status']}</b> "
-                f"| Tenengrad: {metrics['tenengrad']:.1f}"
-            )
+            self.lbl_l_sharpness.setText(f"Sharpness (ENL): {metrics['enl']:.2f} ➔ <b style='color:{metrics['enl_color']};'>{metrics['enl_status']}</b>")
+            self.lbl_l_speckle.setText(f"Speckle (VoL): {metrics['vol']:.1f} ➔ <b style='color:{metrics['vol_color']};'>{metrics['vol_status']}</b>")
         else:
             self.lbl_r_fov.setText(f"Field of View (R): {metrics['fov_r']:.3f} ➔ <b style='color:{metrics['fov_color']};'>{metrics['fov_status']}</b>")
             self.lbl_r_brightness.setText(f"Brightness (SNR): {metrics['snr']:.2f} ➔ <b style='color:{metrics['snr_color']};'>{metrics['snr_status']}</b>")
             self.lbl_r_contrast.setText(f"Contrast (CNR): {metrics['cnr']:.2f} ➔ <b style='color:{metrics['cnr_color']};'>{metrics['cnr_status']}</b>")
-            self.lbl_r_sharpness.setText(
-                f"Noise (ENL): {metrics['enl']:.2f} ➔ "
-                f"<b style='color:{metrics['enl_color']};'>{metrics['enl_status']}</b> "
-                f"| <span style='color:{metrics['psnr_color']};'>{metrics['psnr_text']}</span>"
-            )
-            self.lbl_r_speckle.setText(
-                f"Sharpness (VoL): {metrics['vol']:.1f} ➔ "
-                f"<b style='color:{metrics['vol_color']};'>{metrics['vol_status']}</b> "
-                f"| Tenengrad Post: {metrics['tenengrad']:.1f}"
-            )
+            self.lbl_r_sharpness.setText(f"Sharpness (ENL): {metrics['enl']:.2f} | <span style='color:{metrics['psnr_color']};'>{metrics['psnr_text']}</span>")
+            self.lbl_r_speckle.setText(f"Speckle (VoL): {metrics['vol']:.1f} | Tenengrad Post: {metrics['tenengrad']:.1f} ➔ <b style='color:{metrics['vol_color']};'>{metrics['vol_status']}</b>")
 
     def save_to_left_view(self):
         if self.processed_image is not None:
             self.left_view_image = self.processed_image.copy()
             self.display_on_label(self.left_view_image, self.lbl_orig_view)
             
-            metrics = analyze_medical_criteria(self.left_view_image, self.orig_image, self.roi_coordinates, self.roi2_coordinates)
+            metrics = analyze_medical_criteria(self.left_view_image, self.orig_image)
             self.update_criteria_ui_labels(metrics, "left")
             self.status_bar.showMessage("Snapshot locked to Left View and recalculating criteria.")
 
@@ -986,7 +761,7 @@ class UltrasoundProcessorApp(QMainWindow):
                 
             self.display_on_label(self.left_view_image, self.lbl_orig_view)
             
-            metrics = analyze_medical_criteria(self.orig_image, None, self.roi_coordinates, self.roi2_coordinates)
+            metrics = analyze_medical_criteria(self.orig_image, None)
             self.update_criteria_ui_labels(metrics, "left")
             self.status_bar.showMessage("Left View reset to Base Image.")
 
@@ -1002,47 +777,18 @@ class UltrasoundProcessorApp(QMainWindow):
             self.left_view_image = self.orig_image.copy()
             
             self.roi_coordinates = None
-            self.roi2_coordinates = None
-            self.auto_roi_boxes = []
-            self.active_roi_id = 1
             self.btn_toggle_roi.setChecked(False)
-            self.btn_toggle_roi.setText("🎯 Turn ON ROI 1 Selection")
+            self.btn_toggle_roi.setText("🎯 Turn ON ROI Selection")
             self.btn_toggle_roi.setStyleSheet("background-color: #8e44ad; color: white; padding: 5px;")
-            self.btn_toggle_roi2.setChecked(False)
-            self.btn_toggle_roi2.setText("🟦 Turn ON ROI 2 Selection")
-            self.btn_toggle_roi2.setStyleSheet("background-color: #2980b9; color: white; padding: 5px;")
             self.lbl_orig_view.set_roi_enabled(False)
 
             self.toggle_controls(True)
             self.reset_sliders()
             
-            metrics_left = analyze_medical_criteria(self.orig_image, None, self.roi_coordinates, self.roi2_coordinates)
+            metrics_left = analyze_medical_criteria(self.orig_image, None)
             self.update_criteria_ui_labels(metrics_left, "left")
             
             self.status_bar.showMessage(f"Loaded: {os.path.basename(file_path)}")
-
-    def draw_auto_roi_borders(self, img_rgb, boxes):
-        """
-        Draw HRAS-selected automatic ROI borders on an RGB image.
-        These boxes show which homogeneous regions are used for automatic ENL.
-        """
-        if img_rgb is None or not boxes:
-            return img_rgb
-
-        out_img = img_rgb.copy()
-        for idx, (xmin, ymin, xmax, ymax) in enumerate(boxes, start=1):
-            cv2.rectangle(out_img, (xmin, ymin), (xmax, ymax), (46, 204, 113), 2)
-            cv2.putText(
-                out_img,
-                f"ROI {idx}",
-                (xmin + 3, max(ymin - 5, 12)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
-                (46, 204, 113),
-                1,
-                cv2.LINE_AA
-            )
-        return out_img
 
     def process_and_display(self):
         if self.orig_image is None:
@@ -1126,27 +872,13 @@ class UltrasoundProcessorApp(QMainWindow):
                 img[self.highlight_mask > 0] = [255, 0, 0]
             
         self.processed_image = img
-
-        # HRAS automatic ROI boxes for ENL visualization.
-        gray_for_hras = cv2.cvtColor(self.processed_image, cv2.COLOR_RGB2GRAY)
-        _, self.auto_roi_boxes = compute_enl_hras(gray_for_hras, return_boxes=True, search_roi=self.roi_coordinates)
-
-        # Tính toán tiêu chí cho ảnh gốc/snapshot và ảnh kết quả thời gian thực.
-        # VoL và Tenengrad sẽ tự động dùng ROI 1 nếu ROI 1 đã được khoanh.
-        metrics_left = analyze_medical_criteria(self.left_view_image, None, self.roi_coordinates, self.roi2_coordinates)
-        self.update_criteria_ui_labels(metrics_left, "left")
-
-        metrics_right = analyze_medical_criteria(self.processed_image, self.orig_image, self.roi_coordinates, self.roi2_coordinates)
+        
+        # Tính toán tiêu chí cho ảnh kết quả thời gian thực
+        metrics_right = analyze_medical_criteria(self.processed_image, self.orig_image)
         self.update_criteria_ui_labels(metrics_right, "right")
-
-        left_display = self.left_view_image
-        right_display = self.processed_image
-
-        if self.chk_auto_roi_border.isChecked():
-            right_display = self.draw_auto_roi_borders(self.processed_image, self.auto_roi_boxes)
-
-        self.display_on_label(left_display, self.lbl_orig_view)
-        self.display_on_label(right_display, self.lbl_proc_view)
+        
+        self.display_on_label(self.left_view_image, self.lbl_orig_view)
+        self.display_on_label(self.processed_image, self.lbl_proc_view)
 
     def export_image_to_disk(self, target_view):
         img_to_save = self.left_view_image if target_view == "left" else self.processed_image
@@ -1189,10 +921,7 @@ class UltrasoundProcessorApp(QMainWindow):
     def eventFilter(self, source, event):
         if event.type() == QEvent.Type.Resize and self.orig_image is not None:
             self.display_on_label(self.left_view_image, self.lbl_orig_view)
-            right_display = self.processed_image
-            if self.chk_auto_roi_border.isChecked():
-                right_display = self.draw_auto_roi_borders(self.processed_image, self.auto_roi_boxes)
-            self.display_on_label(right_display, self.lbl_proc_view)
+            self.display_on_label(self.processed_image, self.lbl_proc_view)
         return super().eventFilter(source, event)
 
     def display_on_label(self, rgb_array, label_element):
