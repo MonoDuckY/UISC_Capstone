@@ -3,14 +3,13 @@ import cv2
 import os
 import numpy as np
 import glob
-import easyocr
+# import easyocr (Không sử dụng EasyOCR nữa)
 
 # 1. KHỞI TẠO MÔ HÌNH
 MODEL_PATH = r"E:\FPT\SET490\trainYOLO\runs\segment\train-4\weights\best.pt"
 model = YOLO(MODEL_PATH)
 
-# Khởi tạo EasyOCR đọc tiếng Anh/Số (hoặc thêm 'vi' nếu có tiếng Việt), đặt gpu=True
-reader = easyocr.Reader(['en'], gpu=True)
+# Gỡ bỏ Reader của EasyOCR
 
 def process_single_image(image_path, out_folder_visual, out_folder_cleaned):
     img = cv2.imread(image_path)
@@ -51,44 +50,10 @@ def process_single_image(image_path, out_folder_visual, out_folder_cleaned):
     cv2.addWeighted(mask_overlay, alpha, img_visual, 1 - alpha, 0, img_visual)
 
     # -------------------------------------------------------------
-    # BƯỚC 2 & 3: ĐỌC CHỮ VỚI EASYOCR (ĐÃ TỐI ƯU THAM SỐ NHẬY)
+    # BƯỚC 2: BLACKOUT NỀN NGOẠI TRỪ VÙNG AN TOÀN (SAFE ZONE)
     # -------------------------------------------------------------
-    # Giảm text_threshold xuống 0.2 (mặc định 0.7) để bắt được chữ siêu mờ/nhỏ
-    # Giảm link_threshold để nối các ký tự rời rạc thành một cụm box lớn hơn
-    ocr_results = reader.readtext(
-        img, 
-        text_threshold=0.2, 
-        link_threshold=0.3, 
-        low_text=0.3, 
-        contrast_ths=0.1
-    )
-    
-    text_mask = np.zeros((h, w), dtype=np.uint8)
-
-    for bbox, text, prob in ocr_results:
-        pts = np.array(bbox, dtype=np.int32)
-        
-        # Tạo mask tạm thời cho riêng hộp chữ này
-        temp_text_mask = np.zeros((h, w), dtype=np.uint8)
-        cv2.fillPoly(temp_text_mask, [pts], 255)
-        
-        # Kiểm tra giao điểm với vùng an toàn của YOLO
-        overlap = cv2.bitwise_and(temp_text_mask, safe_mask_binary)
-        
-        if np.any(overlap > 0):
-            continue  # Tránh can thiệp vùng an toàn
-        else:
-            cv2.fillPoly(text_mask, [pts], 255)
-
-    # -------------------------------------------------------------
-    # BƯỚC 4: TẨY XÓA CHỮ (NÂNG CẤP DILATE ĐỂ XÓA SẠCH VIỀN)
-    # -------------------------------------------------------------
-    # Tăng kích thước kernel lên (7, 7) và chạy 2 lần lặp để mở rộng hẳn vùng xóa ra rìa chữ
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
-    text_mask = cv2.dilate(text_mask, kernel, iterations=2)
-    
-    # Tăng bán kính inpaintRadius lên 15 để thuật toán lấy mẫu mịn hơn, không để lại vết sần
-    img_cleaned = cv2.inpaint(img, text_mask, inpaintRadius=15, flags=cv2.INPAINT_TELEA)
+    # Nhộm đen hoàn toàn các pixel nằm ngoài vùng siêu âm y khoa được phát hiện bởi YOLO
+    img_cleaned = cv2.bitwise_and(img, img, mask=safe_mask_binary)
 
     # -------------------------------------------------------------
     # BƯỚC 5: LƯU KẾT QUẢ
